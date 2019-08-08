@@ -1,4 +1,5 @@
 //! General Purpose Input / Output
+#![allow(deprecated)]
 
 // TODO the pins here currently correspond to the LQFP-100 package. There should be Cargo features
 // that let you select different microcontroller packages
@@ -95,6 +96,7 @@ macro_rules! gpio {
             use core::marker::PhantomData;
 
             use hal::digital::OutputPin;
+            use hal::digital::v1::InputPin;
             use stm32f30x::{$gpioy, $GPIOX};
 
             use rcc::AHB;
@@ -201,6 +203,19 @@ macro_rules! gpio {
             pub struct $PXx<MODE> {
                 i: u8,
                 _mode: PhantomData<MODE>,
+            }
+
+            impl<MODE> InputPin for $PXx<Input<MODE>> {
+                fn is_high(&self) -> bool {
+                    // NOTE(unsafe) atomic read from a stateless register
+                    unsafe { 0 != (*$GPIOX::ptr()).idr.read().bits() & 1 << self.i }
+                }
+
+                fn is_low(&self) -> bool {
+                    // NOTE(unsafe) atomic read from a stateless register
+                    unsafe { 0 == (*$GPIOX::ptr()).idr.read().bits() & 1 << self.i }
+                }
+
             }
 
             impl<MODE> OutputPin for $PXx<Output<MODE>> {
@@ -437,6 +452,31 @@ macro_rules! gpio {
                                 },
                             )
                         });
+                    }
+                }
+
+                impl<MODE> $PXi<Input<MODE>> {
+                    /// Erases the pin number from the type
+                    ///
+                    /// This is useful when you want to collect the pins into an array where you
+                    /// need all the elements to have the same type
+                    pub fn downgrade(self) -> $PXx<Input<MODE>> {
+                        $PXx {
+                            i: $i,
+                            _mode: self._mode,
+                        }
+                    }
+                }
+
+                impl<MODE> InputPin for $PXi<Input<MODE>> {
+                    fn is_high(&self) -> bool {
+                        // NOTE(unsafe) atomic read from a stateless register
+                        unsafe { 0 != (*$GPIOX::ptr()).idr.read().bits() & 1 << $i }
+                    }
+
+                    fn is_low(&self) -> bool {
+                        // NOTE(unsafe) atomic read from a stateless register
+                        unsafe { 0 == (*$GPIOX::ptr()).idr.read().bits() & 1 << $i }
                     }
                 }
 
